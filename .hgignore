@@ -1,0 +1,8 @@
+syntax: glob
+lib/**
+syntax: regexp
+jinput-steam-controller\.jar
+syntax: regexp
+usb4java-license\.txt
+syntax: regexp
+jinput-license.txt
