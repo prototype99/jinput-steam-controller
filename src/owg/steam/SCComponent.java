@@ -1,0 +1,33 @@
+package owg.steam;
+
+import java.io.IOException;
+
+import net.java.games.input.AbstractComponent;
+import net.java.games.input.Event;
+
+/**Base class for Steam Controller component implementations (buttons and axes).*/
+public abstract class SCComponent extends AbstractComponent
+{
+	public final boolean relative;
+	protected SteamController host = null;
+	/**The poll value after the last call to {@link SteamController#getNextDeviceEvent(Event)}*/
+	protected float cachedValue = 0.0f;
+
+	protected SCComponent(String name, Identifier id, boolean relative)
+	{
+		super(name, id);
+		this.relative = relative;
+	}
+	@Override
+	public boolean isRelative()
+	{
+		return relative;
+	}
+
+	@Override
+	protected final float poll() throws IOException {
+		return pollFrom(host.lPadData, host.lStickData, host.latestData);
+	}
+	
+	public abstract float pollFrom(byte[] lPadData, byte[] lStickData, byte[] latestData);
+}
