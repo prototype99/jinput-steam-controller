@@ -170,7 +170,7 @@ public class SteamControllerPlugin extends ControllerEnvironment
 							}
 						}
 					}
-	        	} catch(LibUsbException err) {
+	        	} catch(Exception err) {
 	        		System.out.println("Info: Failed to initialize Steam Controller");
 	        		err.printStackTrace(System.out);
 	        	}

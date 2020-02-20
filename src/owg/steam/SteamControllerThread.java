@@ -1,5 +1,10 @@
 package owg.steam;
 
+import java.awt.AWTException;
+import java.awt.MouseInfo;
+import java.awt.Point;
+import java.awt.PointerInfo;
+import java.awt.Robot;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -15,7 +20,23 @@ import net.java.games.input.Component.Identifier;
 /**Thread that performs Steam Controller USB I/O. This is necessary, 
  * particularly on Linux, because synchronous transfer with libusb is not very good.
  * This thread also handles the auto haptic feedback computation, if enabled.*/
-public class SteamControllerThread extends Thread {
+public class SteamControllerThread extends Thread 
+{
+	protected static final Robot robot;
+	static 
+	{
+		Robot r;
+		try
+		{
+			r = new Robot();
+		} catch (AWTException e)
+		{
+			r = null;
+			e.printStackTrace();
+		}
+		robot = r;
+	}
+	
 	public final SteamController controller;
 
 	protected volatile boolean alive = true;
@@ -43,8 +64,8 @@ public class SteamControllerThread extends Thread {
 	protected boolean lPadIsLatestData = true;
 	protected long lastUpdateTimeNanos = Long.MIN_VALUE;
 
-	protected final SCComponent lpx, lpy, rpx, rpy;
-	protected float lx=0, ly=0, rx=0, ry=0;
+	protected final SCComponent lpx, lpy, rpx, rpy, grz, grx;
+	protected float lx=0, ly=0, rx=0, ry=0, gz=0, gx=0;
 	protected long padTime = Long.MIN_VALUE;
 	protected final int[] hapticOutcodes = {-1, -1};
 
@@ -56,6 +77,7 @@ public class SteamControllerThread extends Thread {
 
 	public SteamControllerThread(SteamController controller) throws LibUsbException {
 		super(controller.toString()+"-Thread");
+		
 		setDaemon(true);
 		this.controller = controller;
 		//Note: Failed handle open needs no cleanup
@@ -101,6 +123,8 @@ public class SteamControllerThread extends Thread {
 		lpy = ((SCComponent)controller.getComponent(Identifier.Axis.Y_FORCE));
 		rpx = ((SCComponent)controller.getComponent(Identifier.Axis.RX_FORCE));
 		rpy = ((SCComponent)controller.getComponent(Identifier.Axis.RY_FORCE));
+		grz = ((SCComponent)controller.getComponent(Identifier.Axis.RZ));
+		grx = ((SCComponent)controller.getComponent(Identifier.Axis.RX));
 	}
 
 	@Override
@@ -218,6 +242,8 @@ public class SteamControllerThread extends Thread {
 	}
 
 	private void processInputData() {
+		int mouseDX = 0;
+		int mouseDY = 0;
 		synchronized (lock) {
 			lPadIsLatestData = (data.get(10)&8) != 0;
 			byte[] dst = lPadIsLatestData?lPadData:lStickData;
@@ -258,7 +284,25 @@ public class SteamControllerThread extends Thread {
 				}
 			}
 
-			lastUpdateTimeNanos = System.nanoTime();
+			long currentTime = System.nanoTime();
+			
+			if(controller.gyroMouseX != 0 || controller.gyroMouseY != 0)
+			{
+				long dt = currentTime - lastUpdateTimeNanos;
+				gz += (controller.gyroMouseX*grz.pollFrom(lPadData, lStickData, dst)*10000000000L)/dt;
+				gx += (controller.gyroMouseY*grx.pollFrom(lPadData, lStickData, dst)*10000000000L)/dt;
+				int buttons = (dst[8]&0xFF) | ((dst[9]&0xFF)<<8) | ((dst[10]&0xFF)<<16) | ((dst[11]&0xFF)<<24);
+				if((controller.gyroMouseEnableMask == 0 || (buttons&controller.gyroMouseEnableMask) != 0) &&
+						(buttons&controller.gyroMouseDisableMask) == 0)
+				{
+					mouseDX = (int)gz;
+					mouseDY = (int)gx;
+				}
+				gz = gz%1.0f;
+				gx = gx%1.0f;
+			}	
+			
+			lastUpdateTimeNanos = currentTime;
 
 			if(lastUpdateTimeNanos > padTime+(long)33E6)
 			{
@@ -288,6 +332,19 @@ public class SteamControllerThread extends Thread {
 					zeroHaptics(SteamController.STEAM_RUMBLER_RIGHT);
 				doVibration(SteamController.STEAM_RUMBLER_RIGHT);
 				padTime = lastUpdateTimeNanos;
+			}
+		}
+		if(robot != null && (mouseDX != 0 || mouseDY != 0))
+		{
+			//Avoid deadlock risk
+			synchronized (robot)
+			{
+				PointerInfo ptr = MouseInfo.getPointerInfo();
+				if(ptr != null)
+				{
+					Point mouse = ptr.getLocation();
+					robot.mouseMove(mouse.x+mouseDX, mouse.y-mouseDY);
+				}
 			}
 		}
 	}

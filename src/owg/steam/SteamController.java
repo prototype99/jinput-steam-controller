@@ -153,6 +153,16 @@ public class SteamController extends AbstractController
 	public static final String PROP_LEFT_STICK_EDGE_ZONE = SteamController.class.getName()+".leftStickEdgeZone",
 			PROP_LEFT_PAD_EDGE_ZONE = SteamController.class.getName()+".leftPadEdgeZone",
 			PROP_RIGHT_PAD_EDGE_ZONE = SteamController.class.getName()+".rightPadEdgeZone";
+	
+	/**Controls how much the gyro influences the mouse. Set to zero to disable.*/
+	public static final String PROP_GYRO_MOUSE_X = SteamController.class.getName()+".gyroMouseX",
+			PROP_GYRO_MOUSE_Y = SteamController.class.getName()+".gyroMouseY";
+	
+	/**Bits for buttons that can be pressed to enable gyro mouse control. 
+	 * Set to zero to not require any buttons. The bitmask layout is the same as for buttonMask.*/
+	public static final String PROP_GYRO_MOUSE_ENABLE_MASK = SteamController.class.getName()+".gyroMouseEnableMask";
+	/**Bits for buttons that can be pressed to disable gyro mouse control. The bitmask layout is the same as for buttonMask.*/
+	public static final String PROP_GYRO_MOUSE_DISABLE_MASK = SteamController.class.getName()+".gyroMouseDisableMask";
 
 	/**Properties object for configuring SteamController instances.<br>
 	 * <br>
@@ -194,6 +204,11 @@ public class SteamController extends AbstractController
 	public final float leftStickEdgeZone;
 	public final float leftPadEdgeZone;
 	public final float rightPadEdgeZone;
+	
+	public final float gyroMouseX;
+	public final float gyroMouseY;
+	public final int gyroMouseEnableMask;
+	public final int gyroMouseDisableMask;
 	
 	public final int buttonMask;
 	public final boolean hideDisabledButtons;
@@ -240,6 +255,11 @@ public class SteamController extends AbstractController
 		this.leftStickEdgeZone = SCUtil.getFloat(properties, PROP_LEFT_STICK_EDGE_ZONE, 0.0f);
 		this.leftPadEdgeZone = SCUtil.getFloat(properties, PROP_LEFT_PAD_EDGE_ZONE, 0.3f);
 		this.rightPadEdgeZone = SCUtil.getFloat(properties, PROP_RIGHT_PAD_EDGE_ZONE, 0.3f);
+		
+		this.gyroMouseX = SCUtil.getFloat(properties, PROP_GYRO_MOUSE_X, 0.0f);
+		this.gyroMouseY = SCUtil.getFloat(properties, PROP_GYRO_MOUSE_Y, 0.0f);
+		this.gyroMouseEnableMask = SCUtil.getInt(properties, PROP_GYRO_MOUSE_ENABLE_MASK, 0x0);
+		this.gyroMouseDisableMask = SCUtil.getInt(properties, PROP_GYRO_MOUSE_DISABLE_MASK, 0x0);	
 		
 		this.buttonMask = SCUtil.getInt(properties, PROP_BUTTON_MASK, 0x7FFFFF);
 		this.hideDisabledButtons = SCUtil.getByte(properties, PROP_HIDE_DISABLED_BUTTONS, BYTE_FALSE) != 0;
