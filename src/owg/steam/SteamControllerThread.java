@@ -11,6 +11,8 @@ import java.nio.IntBuffer;
 import java.util.Arrays;
 import java.util.Queue;
 
+import javax.swing.SwingUtilities;
+
 import org.usb4java.DeviceHandle;
 import org.usb4java.LibUsb;
 import org.usb4java.LibUsbException;
@@ -242,8 +244,6 @@ public class SteamControllerThread extends Thread
 	}
 
 	private void processInputData() {
-		int mouseDX = 0;
-		int mouseDY = 0;
 		synchronized (lock) {
 			lPadIsLatestData = (data.get(10)&8) != 0;
 			byte[] dst = lPadIsLatestData?lPadData:lStickData;
@@ -295,8 +295,24 @@ public class SteamControllerThread extends Thread
 				if((controller.gyroMouseEnableMask == 0 || (buttons&controller.gyroMouseEnableMask) != 0) &&
 						(buttons&controller.gyroMouseDisableMask) == 0)
 				{
-					mouseDX = (int)gz;
-					mouseDY = (int)gx;
+					final int mouseDX = (int)gz;
+					final int mouseDY = (int)gx;
+					if(robot != null)
+					{
+						SwingUtilities.invokeLater(new Runnable()
+						{
+							@Override
+							public void run()
+							{
+								PointerInfo ptr = MouseInfo.getPointerInfo();
+								if(ptr != null)
+								{
+									Point mouse = ptr.getLocation();
+									robot.mouseMove(mouse.x+mouseDX, mouse.y-mouseDY);
+								}
+							}
+						});
+					}
 				}
 				gz = gz%1.0f;
 				gx = gx%1.0f;
@@ -332,19 +348,6 @@ public class SteamControllerThread extends Thread
 					zeroHaptics(SteamController.STEAM_RUMBLER_RIGHT);
 				doVibration(SteamController.STEAM_RUMBLER_RIGHT);
 				padTime = lastUpdateTimeNanos;
-			}
-		}
-		if(robot != null && (mouseDX != 0 || mouseDY != 0))
-		{
-			//Avoid deadlock risk
-			synchronized (robot)
-			{
-				PointerInfo ptr = MouseInfo.getPointerInfo();
-				if(ptr != null)
-				{
-					Point mouse = ptr.getLocation();
-					robot.mouseMove(mouse.x+mouseDX, mouse.y-mouseDY);
-				}
 			}
 		}
 	}
