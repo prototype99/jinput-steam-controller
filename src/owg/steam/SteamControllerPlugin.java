@@ -18,7 +18,7 @@ import net.java.games.input.ControllerEnvironment;
 
 public class SteamControllerPlugin extends ControllerEnvironment
 {
-	public static void main(String[] args)
+	public static void main(String[] args) throws InterruptedException
 	{
 		//Run this for a primitive testing environment
 		SteamController.properties = new Properties();
@@ -53,6 +53,11 @@ public class SteamControllerPlugin extends ControllerEnvironment
 	    	if(!testInput(controllers))
 	    		break;
 	    }
+	    p = null;
+	    controllers = null;	
+	    System.gc();
+	    Thread.sleep(100);
+	    System.out.println("It's over");
 	}
 
 	private static boolean testInput(SteamController[] controllers) {
@@ -96,7 +101,7 @@ public class SteamControllerPlugin extends ControllerEnvironment
 	}
 
 	protected Context context;
-	protected final Thread shutdownHook;
+	protected final SteamControllerShutdownHook shutdownHook;
 	
 	protected SteamController[] controllers;
 	
@@ -111,27 +116,7 @@ public class SteamControllerPlugin extends ControllerEnvironment
 				throw new LibUsbException("Unable to initialize libusb.", result);
 		}
 		//Add shutdown hook.
-		shutdownHook = new Thread() {
-			@Override
-			public void run()
-			{
-				synchronized (lock)
-				{
-					System.out.println("Info: Steam Controller plugin closing");
-					if(controllers != null)
-					{
-						for(SteamController c : controllers)
-							c.close();
-						controllers = null;
-					}
-					if(context != null)
-					{
-						LibUsb.exit(context);
-						context = null;
-					}
-				}
-			}
-		};
+		shutdownHook = new SteamControllerShutdownHook(this);
 		Runtime.getRuntime().addShutdownHook(shutdownHook);
 		
 		{
@@ -186,8 +171,8 @@ public class SteamControllerPlugin extends ControllerEnvironment
 	{
 		synchronized (lock)
 		{
-			shutdownHook.run();
 			Runtime.getRuntime().removeShutdownHook(shutdownHook);
+			shutdown();	
 		}
 	}
 
@@ -201,5 +186,24 @@ public class SteamControllerPlugin extends ControllerEnvironment
 	public boolean isSupported()
 	{
 		return true;
+	}
+
+	public void shutdown()
+	{
+		synchronized (lock)
+		{
+			System.out.println("Info: Steam Controller plugin closing");
+			if(controllers != null)
+			{
+				for(SteamController c : controllers)
+					c.close();
+				controllers = null;
+			}
+			if(context != null)
+			{
+				LibUsb.exit(context);
+				context = null;
+			}
+		}
 	}
 }

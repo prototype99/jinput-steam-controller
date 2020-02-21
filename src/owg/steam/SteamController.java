@@ -2,10 +2,7 @@ package owg.steam;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.LinkedList;
 import java.util.Properties;
-import java.util.Queue;
-
 import org.usb4java.Device;
 import org.usb4java.LibUsb;
 import org.usb4java.LibUsbException;
@@ -177,94 +174,25 @@ public class SteamController extends AbstractController
 
 	/**GC prevention*/
 	public final SteamControllerPlugin env;
-	public final Device device;
-	public final short pid;
-	public final int portNo;
 
-	public final byte endpoint;
-	public final short controlIndex;
-	public final int interfaceNo;
-	
+	protected SteamControllerData data;
+	protected SteamControllerConfig config;
 	protected SteamControllerThread thread;
-
-	public final boolean applyConfiguration;
-
-	public final short leftStickMode;
-	public final short rightPadMode;
-	public final short trackballOrMargin;
-	public final short gyroMode;
-
-	public final boolean leftPadAutoHaptics;
-	public final boolean rightPadAutoHaptics;
-
-	public final float leftStickDeadZone;
-	public final float leftPadDeadZone;
-	public final float rightPadDeadZone;
-
-	public final float leftStickEdgeZone;
-	public final float leftPadEdgeZone;
-	public final float rightPadEdgeZone;
-	
-	public final float gyroMouseX;
-	public final float gyroMouseY;
-	public final int gyroMouseEnableMask;
-	public final int gyroMouseDisableMask;
-	
-	public final int buttonMask;
-	public final boolean hideDisabledButtons;
-
-	protected Queue<SCButton> clickQueue = new LinkedList<SCButton>();
-
-	/**Data specific to left pad*/
-	protected final byte[] lPadData = new byte[64];
-	/**Data specific to left stick*/
-	protected final byte[] lStickData = new byte[64];
-	/**Latest data received from USB. Points to either lPadDataClient or lStickDataClient.*/
-	protected byte[] latestData = lPadData;
-	protected long lastUpdateTimeNanos = Long.MIN_VALUE;
 
 	public SteamController(SteamControllerPlugin env, Device device, short pid, int interfaceNo, int endpointIndex) throws LibUsbException
 	{
 		super("Steam Controller"+(pid == PID_WIRELESS?"(wireless)":"(wired)"), componentArray(), NO_CHILDREN, 
 				SCUtil.getByte(properties, PROP_RUMBLERS, 0x01) == 0 ? NO_RUMBLERS : rumblerArray());
+		this.data = new SteamControllerData();
+		this.config = new SteamControllerConfig(properties, device, pid, LibUsb.getPortNumber(device), (byte)(LibUsb.ENDPOINT_IN|endpointIndex), (short)interfaceNo, interfaceNo);
 		for(SCComponent c : (SCComponent[])getComponents())
-			c.host = this;
+		{
+			c.data = data;
+			c.config = config;
+		}
 		for(SCRumbler c : (SCRumbler[])getRumblers())
 			c.host = this;
 		this.env = env;
-		this.device = device;
-		this.pid = pid;
-		this.interfaceNo = interfaceNo;
-		this.endpoint = (byte)(LibUsb.ENDPOINT_IN|endpointIndex);
-		this.controlIndex = (short) (pid==PID_WIRELESS ? interfaceNo : interfaceNo);
-
-		this.applyConfiguration = SCUtil.getByte(properties, PROP_APPLY_CONFIGURATION, 0x01) != 0;
-
-		this.leftStickMode = SCUtil.getShort(properties, PROP_LEFT_STICK_MODE, STEAM_INPUT_MODE_JOYSTICK);
-		this.rightPadMode = SCUtil.getShort(properties, PROP_RIGHT_PAD_MODE, STEAM_INPUT_MODE_JOYSTICK);
-		this.trackballOrMargin = SCUtil.getShort(properties, PROP_RIGHT_TRACKBALL_OR_MARGIN, rightPadMode==0?0x8000:0x0000);
-		this.gyroMode = SCUtil.getShort(properties, PROP_GYRO_MODE, STEAM_GYRO_MODE_SEND_RAW_GYRO);
-
-		this.leftPadAutoHaptics = SCUtil.getByte(properties, PROP_LEFT_PAD_AUTO_HAPTICS, BYTE_FALSE) != 0;
-		this.rightPadAutoHaptics = SCUtil.getByte(properties, PROP_RIGHT_PAD_AUTO_HAPTICS, BYTE_TRUE) != 0 && rightPadMode != STEAM_INPUT_MODE_MOUSE;
-
-		this.leftStickDeadZone = SCUtil.getFloat(properties, PROP_LEFT_STICK_DEAD_ZONE, 0.0f);
-		this.leftPadDeadZone = SCUtil.getFloat(properties, PROP_LEFT_PAD_DEAD_ZONE, 0.2f);
-		this.rightPadDeadZone = SCUtil.getFloat(properties, PROP_RIGHT_PAD_DEAD_ZONE, 0.2f);
-
-		this.leftStickEdgeZone = SCUtil.getFloat(properties, PROP_LEFT_STICK_EDGE_ZONE, 0.0f);
-		this.leftPadEdgeZone = SCUtil.getFloat(properties, PROP_LEFT_PAD_EDGE_ZONE, 0.3f);
-		this.rightPadEdgeZone = SCUtil.getFloat(properties, PROP_RIGHT_PAD_EDGE_ZONE, 0.3f);
-		
-		this.gyroMouseX = SCUtil.getFloat(properties, PROP_GYRO_MOUSE_X, 0.0f);
-		this.gyroMouseY = SCUtil.getFloat(properties, PROP_GYRO_MOUSE_Y, 0.0f);
-		this.gyroMouseEnableMask = SCUtil.getInt(properties, PROP_GYRO_MOUSE_ENABLE_MASK, 0x0);
-		this.gyroMouseDisableMask = SCUtil.getInt(properties, PROP_GYRO_MOUSE_DISABLE_MASK, 0x0);	
-		
-		this.buttonMask = SCUtil.getInt(properties, PROP_BUTTON_MASK, 0x7FFFFF);
-		this.hideDisabledButtons = SCUtil.getByte(properties, PROP_HIDE_DISABLED_BUTTONS, BYTE_FALSE) != 0;
-
-		this.portNo = LibUsb.getPortNumber(device);
 
 		thread = new SteamControllerThread(this);
 		thread.start();
@@ -327,12 +255,12 @@ public class SteamController extends AbstractController
 			@Override
 			protected float deadZone()
 			{
-				return host.leftStickDeadZone;
+				return config.leftStickDeadZone;
 			}
 			@Override
 			protected float edgeZone()
 			{
-				return host.leftStickEdgeZone;
+				return config.leftStickEdgeZone;
 			}
 		};
 		r[i+1] = new SCPairedAxis("Y Axis", Identifier.Axis.Y)
@@ -345,12 +273,12 @@ public class SteamController extends AbstractController
 			@Override
 			protected float deadZone()
 			{
-				return host.leftStickDeadZone;
+				return config.leftStickDeadZone;
 			}
 			@Override
 			protected float edgeZone()
 			{
-				return host.leftStickEdgeZone;
+				return config.leftStickEdgeZone;
 			}
 		};
 		((SCPairedAxis)r[i  ]).pair((SCPairedAxis)r[i+1]);
@@ -366,12 +294,12 @@ public class SteamController extends AbstractController
 			@Override
 			protected float deadZone()
 			{
-				return host.leftPadDeadZone;
+				return config.leftPadDeadZone;
 			}
 			@Override
 			protected float edgeZone()
 			{
-				return host.leftPadEdgeZone;
+				return config.leftPadEdgeZone;
 			}
 		};
 		r[i+1] = new SCPairedAxis("LPad Y", Identifier.Axis.Y_FORCE)
@@ -384,12 +312,12 @@ public class SteamController extends AbstractController
 			@Override
 			protected float deadZone()
 			{
-				return host.leftPadDeadZone;
+				return config.leftPadDeadZone;
 			}
 			@Override
 			protected float edgeZone()
 			{
-				return host.leftPadEdgeZone;
+				return config.leftPadEdgeZone;
 			}
 		};
 		((SCPairedAxis)r[i  ]).pair((SCPairedAxis)r[i+1]);
@@ -405,12 +333,12 @@ public class SteamController extends AbstractController
 			@Override
 			protected float deadZone()
 			{
-				return host.rightPadDeadZone;
+				return config.rightPadDeadZone;
 			}
 			@Override
 			protected float edgeZone()
 			{
-				return host.rightPadEdgeZone;
+				return config.rightPadEdgeZone;
 			}
 		};
 		r[i+1] = new SCPairedAxis("RPad Y", Identifier.Axis.RY_FORCE)
@@ -423,12 +351,12 @@ public class SteamController extends AbstractController
 			@Override
 			protected float deadZone()
 			{
-				return host.rightPadDeadZone;
+				return config.rightPadDeadZone;
 			}
 			@Override
 			protected float edgeZone()
 			{
-				return host.rightPadEdgeZone;
+				return config.rightPadEdgeZone;
 			}
 		};
 		((SCPairedAxis)r[i  ]).pair((SCPairedAxis)r[i+1]);
@@ -561,56 +489,31 @@ public class SteamController extends AbstractController
 		}
 	}
 
-	public boolean isWired()
-	{
-		return pid == PID_WIRED;
-	}
-	public boolean isWireless()
-	{
-		return pid == PID_WIRELESS;
-	}
-
 	@Override
 	public String toString()
 	{
-		return getName()+" "+portNo+"-"+interfaceNo;
+		return getName()+" "+config.portNo+"-"+config.interfaceNo;
 	}
 
 	public void close()
 	{
 		thread.close();
 	}
-	
-	public Queue<SCButton> getClickQueue()
-	{
-		return clickQueue;
-	}
-	
-	public byte[] getLPadData() {
-		return lPadData;
-	}
-	public byte[] getLStickData() {
-		return lStickData;
-	}
-	public void setLatestData(byte[] latestData, long lastUpdateTimeNanos) {
-		this.latestData = latestData;
-		this.lastUpdateTimeNanos = lastUpdateTimeNanos;
-	}
 
 	@Override
 	protected void pollDevice() throws IOException
 	{
-		thread.poll();
+		thread.poll(data);
 	}
 
 	@Override
 	protected boolean getNextDeviceEvent(Event event) throws IOException
 	{
 		SCButton b;
-		while((b = clickQueue.poll()) != null)
+		while((b = data.clickQueue.poll()) != null)
 		{
 			b.cachedValue = 1.0f-b.cachedValue;
-			event.set(b, b.cachedValue, lastUpdateTimeNanos);
+			event.set(b, b.cachedValue, data.lastUpdateTimeNanos);
 			return true;
 		}
 
@@ -622,7 +525,7 @@ public class SteamController extends AbstractController
 				if(pv != c.cachedValue)
 				{
 					c.cachedValue = pv;
-					event.set(c, pv, lastUpdateTimeNanos);
+					event.set(c, pv, data.lastUpdateTimeNanos);
 					return true;
 				}
 			}
@@ -645,7 +548,7 @@ public class SteamController extends AbstractController
 	@Override
 	public int getPortNumber()
 	{
-		return portNo;
+		return config.portNo;
 	}
 
 	@Override

@@ -9,8 +9,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Arrays;
-import java.util.Queue;
-
 import javax.swing.SwingUtilities;
 
 import org.usb4java.DeviceHandle;
@@ -27,7 +25,7 @@ public class SteamControllerThread extends Thread
 	protected static final Robot robot;
 	static 
 	{
-		Robot r;
+		Robot r = null;
 		try
 		{
 			r = new Robot();
@@ -39,7 +37,7 @@ public class SteamControllerThread extends Thread
 		robot = r;
 	}
 	
-	public final SteamController controller;
+	public final SteamControllerConfig config;
 
 	protected volatile boolean alive = true;
 	protected IOException fault = null;
@@ -55,6 +53,7 @@ public class SteamControllerThread extends Thread
 	/**Direct buffer used for USB operations*/
 	protected final IntBuffer transferred = ByteBuffer.allocateDirect(4).asIntBuffer();
 
+	protected SCComponent[] components;
 	protected SCButton[] clickQueue = new SCButton[32];//Default event queue size from AbstractController
 	protected int clickQueueHead = 0, clickQueueTail = 0;
 
@@ -79,13 +78,14 @@ public class SteamControllerThread extends Thread
 
 	public SteamControllerThread(SteamController controller) throws LibUsbException {
 		super(controller.toString()+"-Thread");
+		components = (SCComponent[]) controller.getComponents();
 		
 		setDaemon(true);
-		this.controller = controller;
+		this.config = controller.config;
 		//Note: Failed handle open needs no cleanup
 		handle = new DeviceHandle();
 		{
-			int result = LibUsb.open(controller.device, handle);
+			int result = LibUsb.open(config.device, handle);
 			if (result != LibUsb.SUCCESS) {
 				handle = null;
 				throw new LibUsbException("Unable to open USB device", result);
@@ -94,7 +94,7 @@ public class SteamControllerThread extends Thread
 
 		try {
 			// Check if kernel driver must be detached
-			boolean detach =  LibUsb.kernelDriverActive(handle, controller.interfaceNo) == 1;
+			boolean detach =  LibUsb.kernelDriverActive(handle, config.interfaceNo) == 1;
 			//Note: It is recommended to check the value of
 			//LibUsb.hasCapability(LibUsb.CAP_SUPPORTS_DETACH_KERNEL_DRIVER),
 			//but this always returns false (even if the function works)
@@ -102,14 +102,14 @@ public class SteamControllerThread extends Thread
 			// Detach the kernel driver
 			if (detach)
 			{
-				int result = LibUsb.detachKernelDriver(handle,  controller.interfaceNo);
+				int result = LibUsb.detachKernelDriver(handle,  config.interfaceNo);
 				if (result != LibUsb.SUCCESS) 
 					throw new LibUsbException("Unable to detach kernel driver", result);
 			}
 			kernelDriver = detach;
 			
 			{
-				int result = LibUsb.claimInterface(handle, controller.interfaceNo);
+				int result = LibUsb.claimInterface(handle, config.interfaceNo);
 				if (result != LibUsb.SUCCESS) 
 					throw new LibUsbException("Unable to claim interface", result);
 			}
@@ -121,6 +121,7 @@ public class SteamControllerThread extends Thread
 			throw e;
 		}
 
+		//TODO this is not okay
 		lpx = ((SCComponent)controller.getComponent(Identifier.Axis.X_FORCE));
 		lpy = ((SCComponent)controller.getComponent(Identifier.Axis.Y_FORCE));
 		rpx = ((SCComponent)controller.getComponent(Identifier.Axis.RX_FORCE));
@@ -132,7 +133,7 @@ public class SteamControllerThread extends Thread
 	@Override
 	public void run() {
 		try {
-			connected = controller.isWired();
+			connected = config.isWired();
 			if(connected)
 				doSetup();
 			else
@@ -157,13 +158,13 @@ public class SteamControllerThread extends Thread
 							//data[3] is 1, because size is 1 byte
 							if(!connected && data.get(4) == SteamController.STEAM_WIRELESS_CONNECT)
 							{
-								System.out.println("Info: "+controller+" connected");
+								System.out.println("Info: "+this+" connected");
 								connected = true;
 								doSetup();//Need to (re)apply config here
 							}
 							else if (connected && data.get(4) == SteamController.STEAM_WIRELESS_DISCONNECT)
 							{
-								System.out.println("Info: "+controller+" disconnected");
+								System.out.println("Info: "+this+" disconnected");
 								connected = false;
 								zero();
 							}
@@ -173,7 +174,7 @@ public class SteamControllerThread extends Thread
 							if(!connected)
 							{
 								//linux/drivers/hid/hid-steam does this, not sure if necessary
-								System.out.println("Info: "+controller+" connected via battery status");
+								System.out.println("Info: "+this+" connected via battery status");
 								connected = true;
 								doSetup();
 							}
@@ -192,7 +193,7 @@ public class SteamControllerThread extends Thread
 			}
 
 		} catch(Exception err) {
-			System.out.println("Info: "+controller+" disconnected irregularly ("+err.toString()+")");
+			System.out.println("Info: "+this+" disconnected irregularly ("+err.toString()+")");
 			synchronized (lock) {
 				alive = false;
 				if(err instanceof IOException)
@@ -217,7 +218,7 @@ public class SteamControllerThread extends Thread
 
 	private void zero() {
 		lastUpdateTimeNanos = System.nanoTime();
-		for(SCComponent c : (SCComponent[])controller.getComponents())
+		for(SCComponent c : components)
 		{
 			if(c instanceof SCButton)
 			{
@@ -270,7 +271,7 @@ public class SteamControllerThread extends Thread
 					lPadData[19] = 0;
 				}
 			}
-			for(SCComponent c : (SCComponent[])controller.getComponents())
+			for(SCComponent c : (SCComponent[])components)
 			{
 				if(c instanceof SCButton)
 				{
@@ -283,17 +284,14 @@ public class SteamControllerThread extends Thread
 					}
 				}
 			}
-
-			long currentTime = System.nanoTime();
 			
-			if(controller.gyroMouseX != 0 || controller.gyroMouseY != 0)
+			if(config.gyroMouseX != 0 || config.gyroMouseY != 0)
 			{
-				long dt = currentTime - lastUpdateTimeNanos;
-				gz += (controller.gyroMouseX*grz.pollFrom(lPadData, lStickData, dst)*10000000000L)/dt;
-				gx += (controller.gyroMouseY*grx.pollFrom(lPadData, lStickData, dst)*10000000000L)/dt;
+				gz += (config.gyroMouseX*grz.pollFrom(lPadData, lStickData, dst)*1000L);
+				gx += (config.gyroMouseY*grx.pollFrom(lPadData, lStickData, dst)*1000L);
 				int buttons = (dst[8]&0xFF) | ((dst[9]&0xFF)<<8) | ((dst[10]&0xFF)<<16) | ((dst[11]&0xFF)<<24);
-				if((controller.gyroMouseEnableMask == 0 || (buttons&controller.gyroMouseEnableMask) != 0) &&
-						(buttons&controller.gyroMouseDisableMask) == 0)
+				if((config.gyroMouseEnableMask == 0 || (buttons&config.gyroMouseEnableMask) != 0) &&
+						(buttons&config.gyroMouseDisableMask) == 0)
 				{
 					final int mouseDX = (int)gz;
 					final int mouseDY = (int)gx;
@@ -318,11 +316,11 @@ public class SteamControllerThread extends Thread
 				gx = gx%1.0f;
 			}	
 			
-			lastUpdateTimeNanos = currentTime;
+			lastUpdateTimeNanos = System.nanoTime();
 
 			if(lastUpdateTimeNanos > padTime+(long)33E6)
 			{
-				if(controller.leftPadAutoHaptics)
+				if(config.leftPadAutoHaptics)
 				{
 					float lx0 = lpx.pollFrom(lPadData, lStickData, dst);
 					float ly0 = lpy.pollFrom(lPadData, lStickData, dst);
@@ -335,7 +333,7 @@ public class SteamControllerThread extends Thread
 					zeroHaptics(SteamController.STEAM_RUMBLER_LEFT);
 				doVibration(SteamController.STEAM_RUMBLER_LEFT);
 
-				if(controller.rightPadAutoHaptics)
+				if(config.rightPadAutoHaptics)
 				{
 					float rx1 = rpx.pollFrom(lPadData, lStickData, dst);
 					float ry1 = rpy.pollFrom(lPadData, lStickData, dst);
@@ -430,7 +428,7 @@ public class SteamControllerThread extends Thread
 				connected = false;
 			}
 
-			int result = LibUsb.releaseInterface(handle, controller.interfaceNo);
+			int result = LibUsb.releaseInterface(handle, config.interfaceNo);
 			if (result != LibUsb.SUCCESS)
 				System.out.println("Info: Unable to release interface: "+result+" (0x"+Integer.toHexString(result)+")");
 
@@ -440,7 +438,7 @@ public class SteamControllerThread extends Thread
 		// Attach the kernel driver again if needed
 		if (kernelDriver)
 		{
-			int result = LibUsb.attachKernelDriver(handle, controller.interfaceNo);
+			int result = LibUsb.attachKernelDriver(handle, config.interfaceNo);
 			if (result != LibUsb.SUCCESS) 
 				System.out.println("Info: Unable to re-attach kernel driver: "+result+" (0x"+Integer.toHexString(result)+")");
 			kernelDriver = false;
@@ -451,7 +449,7 @@ public class SteamControllerThread extends Thread
 			LibUsb.close(handle);
 			handle = null;
 		}
-		System.out.println("Info: "+controller+" cleaned up");
+		System.out.println("Info: "+this+" cleaned up");
 	}
 
 	private void fetchData(byte[] dst)
@@ -469,7 +467,7 @@ public class SteamControllerThread extends Thread
 
 	protected void doSetup()
 	{
-		if(!controller.applyConfiguration)
+		if(!config.applyConfiguration)
 			return;
 		try {
 			data.put( 0, SteamController.STEAM_CMD_CLEAR_MAPPINGS);
@@ -479,20 +477,20 @@ public class SteamControllerThread extends Thread
 			data.put( 1, (byte)12);//size (bytes)
 
 			data.put( 2, SteamController.STEAM_REG_GYRO_MODE);
-			data.put( 3, (byte)(controller.gyroMode&0xFF));
-			data.put( 4, (byte)(controller.gyroMode>>>8));
+			data.put( 3, (byte)(config.gyroMode&0xFF));
+			data.put( 4, (byte)(config.gyroMode>>>8));
 
 			data.put( 5, SteamController.STEAM_REG_LSTICK_MODE);
-			data.put( 6, (byte)(controller.leftStickMode&0xFF));
-			data.put( 7, (byte)(controller.leftStickMode>>>8));
+			data.put( 6, (byte)(config.leftStickMode&0xFF));
+			data.put( 7, (byte)(config.leftStickMode>>>8));
 
 			data.put( 8, SteamController.STEAM_REG_RPAD_MODE);
-			data.put( 9, (byte)(controller.rightPadMode&0xFF));
-			data.put(10, (byte)(controller.rightPadMode>>>8));
+			data.put( 9, (byte)(config.rightPadMode&0xFF));
+			data.put(10, (byte)(config.rightPadMode>>>8));
 
 			data.put(11, SteamController.STEAM_REG_TRACKBALL_OR_MARGIN);
-			data.put(12, (byte)(controller.trackballOrMargin&0xFF));
-			data.put(13, (byte)(controller.trackballOrMargin>>>8));
+			data.put(12, (byte)(config.trackballOrMargin&0xFF));
+			data.put(13, (byte)(config.trackballOrMargin>>>8));
 
 			doControlTransfer(250L);
 		} catch (IOException err) {
@@ -522,7 +520,7 @@ public class SteamControllerThread extends Thread
 
 	protected boolean doInterruptTransfer(long timeout) throws IOException
 	{
-		int result = LibUsb.interruptTransfer(handle, controller.endpoint, data, transferred, timeout);
+		int result = LibUsb.interruptTransfer(handle, config.endpoint, data, transferred, timeout);
 		if(result == LibUsb.ERROR_TIMEOUT)
 			return false;
 		if(result != 0)
@@ -533,7 +531,7 @@ public class SteamControllerThread extends Thread
 	public void doControlTransfer(long timeout) throws IOException
 	{
 		int result = LibUsb.controlTransfer(handle, (byte) (LibUsb.REQUEST_TYPE_CLASS|LibUsb.RECIPIENT_INTERFACE), 
-				SteamController.HID_REQ_SET_REPORT, (short)0x0300, controller.controlIndex, data, timeout);
+				SteamController.HID_REQ_SET_REPORT, (short)0x0300, config.controlIndex, data, timeout);
 		if(result != data.capacity())
 		{
 			throw new IOException("Control transfer failed: "+result+" (0x"+Integer.toHexString(result)+")");
@@ -550,20 +548,18 @@ public class SteamControllerThread extends Thread
 		}
 	}
 
-	public void poll() throws IOException {
-		byte[] lPad = controller.getLPadData();
-		byte[] lStick = controller.getLStickData();
-		Queue<SCButton> clicks = controller.getClickQueue();
+	public void poll(SteamControllerData data) throws IOException {
 		synchronized (lock) {
 			while(clickQueueHead != clickQueueTail)
 			{
 				SCButton b = clickQueue[clickQueueTail];
 				clickQueueTail = (clickQueueTail+1)%clickQueue.length;
-				clicks.add(b);
+				data.clickQueue.add(b);
 			}
-			System.arraycopy(lPadData, 0, lPad, 0, 64);
-			System.arraycopy(lStickData, 0, lStick, 0, 64);
-			controller.setLatestData(lPadIsLatestData?lPad:lStick, lastUpdateTimeNanos);
+			System.arraycopy(lPadData, 0, data.lPadData, 0, 64);
+			System.arraycopy(lStickData, 0, data.lStickData, 0, 64);
+			data.latestData = lPadIsLatestData?data.lPadData:data.lStickData;
+			data.lastUpdateTimeNanos = lastUpdateTimeNanos;
 			if(fault != null)
 				throw fault;
 		}

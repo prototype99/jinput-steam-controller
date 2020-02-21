@@ -1,5 +1,7 @@
 syntax: glob
 lib/**
+syntax: glob
+usb4java-src/**
 syntax: regexp
 jinput-steam-controller\.jar
 syntax: regexp

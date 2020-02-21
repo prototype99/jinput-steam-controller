@@ -9,7 +9,8 @@ import net.java.games.input.Event;
 public abstract class SCComponent extends AbstractComponent
 {
 	public final boolean relative;
-	protected SteamController host = null;
+	protected SteamControllerData data = null;
+	protected SteamControllerConfig config = null;
 	/**The poll value after the last call to {@link SteamController#getNextDeviceEvent(Event)}*/
 	protected float cachedValue = 0.0f;
 
@@ -26,7 +27,7 @@ public abstract class SCComponent extends AbstractComponent
 
 	@Override
 	protected final float poll() throws IOException {
-		return pollFrom(host.lPadData, host.lStickData, host.latestData);
+		return pollFrom(data.lPadData, data.lStickData, data.latestData);
 	}
 	
 	public abstract float pollFrom(byte[] lPadData, byte[] lStickData, byte[] latestData);
