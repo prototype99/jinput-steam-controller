@@ -17,10 +17,10 @@ import org.usb4java.LibUsbException;
 
 import net.java.games.input.Component.Identifier;
 
-/**Thread that performs Steam Controller USB I/O. This is necessary, 
+/**Thread-task that performs Steam Controller USB I/O. This is necessary, 
  * particularly on Linux, because synchronous transfer with libusb is not very good.
  * This thread also handles the auto haptic feedback computation, if enabled.*/
-public class SteamControllerThread extends Thread 
+public class SteamControllerThread 
 {
 	protected static final Robot robot;
 	static 
@@ -38,8 +38,7 @@ public class SteamControllerThread extends Thread
 	}
 	
 	public final SteamControllerConfig config;
-
-	protected volatile boolean alive = true;
+	
 	protected IOException fault = null;
 	protected final Object lock = new Object();
 
@@ -76,11 +75,10 @@ public class SteamControllerThread extends Thread
 	protected float[] vibration = {0.0f, 0.0f};
 	protected long[] vibrationTimes = {Long.MIN_VALUE, Long.MIN_VALUE};
 
-	public SteamControllerThread(SteamController controller) throws LibUsbException {
-		super(controller.toString()+"-Thread");
+	public SteamControllerThread(SteamController controller) throws LibUsbException 
+	{
 		components = (SCComponent[]) controller.getComponents();
 		
-		setDaemon(true);
 		this.config = controller.config;
 		//Note: Failed handle open needs no cleanup
 		handle = new DeviceHandle();
@@ -121,7 +119,7 @@ public class SteamControllerThread extends Thread
 			throw e;
 		}
 
-		//TODO this is not okay
+		
 		lpx = ((SCComponent)controller.getComponent(Identifier.Axis.X_FORCE));
 		lpy = ((SCComponent)controller.getComponent(Identifier.Axis.Y_FORCE));
 		rpx = ((SCComponent)controller.getComponent(Identifier.Axis.RX_FORCE));
@@ -129,80 +127,85 @@ public class SteamControllerThread extends Thread
 		grz = ((SCComponent)controller.getComponent(Identifier.Axis.RZ));
 		grx = ((SCComponent)controller.getComponent(Identifier.Axis.RX));
 	}
-
-	@Override
-	public void run() {
+	public void init() {
 		try {
 			connected = config.isWired();
 			if(connected)
 				doSetup();
 			else
 				doRequestCommStatus();
-
-			while(alive)
-			{
-				if(doInterruptTransfer(33L))
-				{
-					int bytes = transferred.get(0);
-					if(bytes == 64)
-					{
-						if(data.get(2) == SteamController.EV_INPUT_DATA)
-						{
-							if(connected)
-								processInputData();
-							//Note: Events received before wireless connect are not processed,
-							//because they are residue events with outdated state
-						}
-						else if(data.get(2) == SteamController.EV_WIRELESS_CONNECT)
-						{
-							//data[3] is 1, because size is 1 byte
-							if(!connected && data.get(4) == SteamController.STEAM_WIRELESS_CONNECT)
-							{
-								System.out.println("Info: "+this+" connected");
-								connected = true;
-								doSetup();//Need to (re)apply config here
-							}
-							else if (connected && data.get(4) == SteamController.STEAM_WIRELESS_DISCONNECT)
-							{
-								System.out.println("Info: "+this+" disconnected");
-								connected = false;
-								zero();
-							}
-						}
-						else if(data.get(2) == SteamController.EV_BATTERY_STATUS)
-						{
-							if(!connected)
-							{
-								//linux/drivers/hid/hid-steam does this, not sure if necessary
-								System.out.println("Info: "+this+" connected via battery status");
-								connected = true;
-								doSetup();
-							}
-						}
-						//else: unknown event
-					}
-					else
-						System.out.println("Info: Unusual transfer length: "+transferred.get(0));
-				}
-				else
-				{
-					//(Timeout is a regular occurrence with wireless controllers, but go easy on the CPU when disconnected)
-					if(!connected)
-						Thread.sleep(150);
-				}
-			}
-
 		} catch(Exception err) {
-			System.out.println("Info: "+this+" disconnected irregularly ("+err.toString()+")");
+			System.out.println("Info: "+this+" failed to initialize ("+err.toString()+")");
 			synchronized (lock) {
-				alive = false;
 				if(err instanceof IOException)
 					fault = (IOException) err;
 				else
 					fault = new IOException(err);
 			}
-		} finally {
-			cleanup();
+		}
+	}
+
+	public void run() {
+		if(fault != null)
+			return;
+		
+		try {
+			if(doInterruptTransfer(1L))
+			{
+				int bytes = transferred.get(0);
+				if(bytes == 64)
+				{
+					if(data.get(2) == SteamController.EV_INPUT_DATA)
+					{
+						if(connected)
+							processInputData();
+						//Note: Events received before wireless connect are not processed,
+						//because they are residue events with outdated state
+					}
+					else if(data.get(2) == SteamController.EV_WIRELESS_CONNECT)
+					{
+						//data[3] is 1, because size is 1 byte
+						if(!connected && data.get(4) == SteamController.STEAM_WIRELESS_CONNECT)
+						{
+							System.out.println("Info: "+this+" connected");
+							connected = true;
+							doSetup();//Need to (re)apply config here
+						}
+						else if (connected && data.get(4) == SteamController.STEAM_WIRELESS_DISCONNECT)
+						{
+							System.out.println("Info: "+this+" disconnected");
+							connected = false;
+							zero();
+						}
+					}
+					else if(data.get(2) == SteamController.EV_BATTERY_STATUS)
+					{
+						if(!connected)
+						{
+							//linux/drivers/hid/hid-steam does this, not sure if necessary
+							System.out.println("Info: "+this+" connected via battery status");
+							connected = true;
+							doSetup();
+						}
+					}
+					//else: unknown event
+				}
+				else
+					System.out.println("Info: Unusual transfer length: "+transferred.get(0));
+			}
+			else
+			{
+				//(Timeout is a regular occurrence with wireless controllers)
+			}
+
+		} catch(Exception err) {
+			System.out.println("Info: "+this+" disconnected irregularly ("+err.toString()+")");
+			synchronized (lock) {
+				if(err instanceof IOException)
+					fault = (IOException) err;
+				else
+					fault = new IOException(err);
+			}
 		}
 	}
 
@@ -410,7 +413,7 @@ public class SteamControllerThread extends Thread
 		hapticCount[rumblerID] = 0;
 	}
 
-	protected void cleanup()
+	public void cleanup()
 	{
 		if(interfaceClaimed)
 		{
@@ -511,7 +514,7 @@ public class SteamControllerThread extends Thread
 			data.put(6, (byte)(period>>>8));
 			data.put(7, (byte)(count&0xFF));//(number of pulses)
 			data.put(8, (byte)(count>>>8));
-			doControlTransfer(100L);
+			doControlTransfer(1L);
 		} catch (IOException err) {
 			System.out.println("Info: Failed to send force feedback message: ");
 			System.out.println(err.getMessage());
@@ -535,16 +538,6 @@ public class SteamControllerThread extends Thread
 		if(result != data.capacity())
 		{
 			throw new IOException("Control transfer failed: "+result+" (0x"+Integer.toHexString(result)+")");
-		}
-	}
-
-	public void close() {
-		alive = false;
-		try {
-			join();
-		} catch (InterruptedException e) {
-			//Dead code (never reached)
-			e.printStackTrace();
 		}
 	}
 

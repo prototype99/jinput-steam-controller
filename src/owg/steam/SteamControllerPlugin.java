@@ -100,10 +100,12 @@ public class SteamControllerPlugin extends ControllerEnvironment
     	return true;
 	}
 
-	protected Context context;
+	protected final Context context;
+	protected final Thread executor;
 	protected final SteamControllerShutdownHook shutdownHook;
+	protected volatile boolean alive = true;
 	
-	protected SteamController[] controllers;
+	protected final SteamController[] controllers;
 	
 	protected final Object lock = new Object();
 	
@@ -164,6 +166,27 @@ public class SteamControllerPlugin extends ControllerEnvironment
 	        LibUsb.freeDeviceList(list, true);
 		    controllers = cList.toArray(new SteamController[cList.size()]);
 		}
+		
+		executor = new Thread("steam-controller-thread") {
+			@Override
+			public void run()
+			{
+				try {
+					for(SteamController c : controllers)
+						c.threadTask.init();
+					while(alive)
+					{
+						for(SteamController c : controllers)
+							c.threadTask.run();
+					}
+				} finally {
+					for(SteamController c : controllers)
+						c.threadTask.cleanup();
+				}
+			}
+		};
+		executor.setDaemon(true);
+		executor.start();
 	}
 	
 	@Override
@@ -192,17 +215,22 @@ public class SteamControllerPlugin extends ControllerEnvironment
 	{
 		synchronized (lock)
 		{
-			System.out.println("Info: Steam Controller plugin closing");
-			if(controllers != null)
+			if(alive)
 			{
-				for(SteamController c : controllers)
-					c.close();
-				controllers = null;
-			}
-			if(context != null)
-			{
-				LibUsb.exit(context);
-				context = null;
+				System.out.println("Info: Steam Controller plugin closing");
+				alive = false;
+				if(executor != null)
+				{
+					try {
+						executor.join();
+					} catch(InterruptedException e) {
+						e.printStackTrace(); //Dead code
+					}
+				}
+				if(context != null)
+				{
+					LibUsb.exit(context);
+				}
 			}
 		}
 	}

@@ -65,8 +65,8 @@ public class SteamController extends AbstractController
 	protected static final SCRumbler[] NO_RUMBLERS = new SCRumbler[0];
 
 	/**buttonMask is a bitfield with 23 bits, which can be used to enable (1) or disable (0) buttons.<br>
-	 * If hideDisabledButtons is false, then disabled buttons will not be visible to the application.<br>
-	 * Otherwise, they will be visible but never appear to be pressed. <br>
+	 * If hideDisabledButtons is true, then disabled buttons will not be visible to the application.<br>
+	 * Otherwise, they will be visible but never appear to be pressed.<br>
 	 * <br>
 	 * The default value is 0b11111111111111111111111, all buttons enabled.<br>
 	 * <br>
@@ -177,7 +177,7 @@ public class SteamController extends AbstractController
 
 	protected SteamControllerData data;
 	protected SteamControllerConfig config;
-	protected SteamControllerThread thread;
+	public final SteamControllerThread threadTask;
 
 	public SteamController(SteamControllerPlugin env, Device device, short pid, int interfaceNo, int endpointIndex) throws LibUsbException
 	{
@@ -194,8 +194,7 @@ public class SteamController extends AbstractController
 			c.host = this;
 		this.env = env;
 
-		thread = new SteamControllerThread(this);
-		thread.start();
+		threadTask = new SteamControllerThread(this);
 	}
 
 	protected static SCRumbler[] rumblerArray()
@@ -495,15 +494,10 @@ public class SteamController extends AbstractController
 		return getName()+" "+config.portNo+"-"+config.interfaceNo;
 	}
 
-	public void close()
-	{
-		thread.close();
-	}
-
 	@Override
 	protected void pollDevice() throws IOException
 	{
-		thread.poll(data);
+		threadTask.poll(data);
 	}
 
 	@Override
@@ -554,6 +548,6 @@ public class SteamController extends AbstractController
 	@Override
 	protected void setDeviceEventQueueSize(int size) throws IOException
 	{
-		thread.setEventQueueSize(size);
+		threadTask.setEventQueueSize(size);
 	}
 }

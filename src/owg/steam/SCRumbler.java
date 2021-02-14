@@ -21,7 +21,7 @@ public class SCRumbler implements Rumbler
 	@Override
 	public void rumble(float intensity)
 	{
-		host.thread.rumble(rumblerID, intensity);
+		host.threadTask.rumble(rumblerID, intensity);
 	}
 
 	@Override
