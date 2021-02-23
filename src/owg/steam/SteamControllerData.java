@@ -5,6 +5,9 @@ import java.util.Queue;
 
 public class SteamControllerData
 {
+	// Notice: This class avoids any references to SteamController or SteamControllerPlugin,
+	// so that the controller thread will not keep the plugin alive if the application stops using it.
+	
 	/**Queue of unprocessed button presses/releases*/
 	protected Queue<SCButton> clickQueue = new LinkedList<SCButton>();
 

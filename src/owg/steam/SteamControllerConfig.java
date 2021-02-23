@@ -8,6 +8,9 @@ import static owg.steam.SteamController.*;
 
 public class SteamControllerConfig
 {
+	// Notice: This class avoids any references to SteamController or SteamControllerPlugin,
+	// so that the controller thread will not keep the plugin alive if the application stops using it.
+	
 	public final Device device;
 	public final short pid;
 	public final int portNo;

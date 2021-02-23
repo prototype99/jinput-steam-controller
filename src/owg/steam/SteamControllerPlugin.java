@@ -100,10 +100,9 @@ public class SteamControllerPlugin extends ControllerEnvironment
     	return true;
 	}
 
-	protected final Context context;
-	protected final Thread executor;
+	protected Context context;
+	protected SteamControllerThread executor;
 	protected final SteamControllerShutdownHook shutdownHook;
-	protected volatile boolean alive = true;
 	
 	protected final SteamController[] controllers;
 	
@@ -167,24 +166,11 @@ public class SteamControllerPlugin extends ControllerEnvironment
 		    controllers = cList.toArray(new SteamController[cList.size()]);
 		}
 		
-		executor = new Thread("steam-controller-thread") {
-			@Override
-			public void run()
-			{
-				try {
-					for(SteamController c : controllers)
-						c.threadTask.init();
-					while(alive)
-					{
-						for(SteamController c : controllers)
-							c.threadTask.run();
-					}
-				} finally {
-					for(SteamController c : controllers)
-						c.threadTask.cleanup();
-				}
-			}
-		};
+		
+		SteamControllerThreadTask[] controllerTasks = new SteamControllerThreadTask[controllers.length];
+		for(int i = 0; i<controllers.length; i++)
+			controllerTasks[i] = controllers[i].threadTask;
+		executor = new SteamControllerThread(controllerTasks);
 		executor.setDaemon(true);
 		executor.start();
 	}
@@ -215,22 +201,21 @@ public class SteamControllerPlugin extends ControllerEnvironment
 	{
 		synchronized (lock)
 		{
-			if(alive)
+			System.out.println("Info: Steam Controller plugin closing");
+			if(executor != null)
 			{
-				System.out.println("Info: Steam Controller plugin closing");
-				alive = false;
-				if(executor != null)
-				{
-					try {
-						executor.join();
-					} catch(InterruptedException e) {
-						e.printStackTrace(); //Dead code
-					}
+				executor.alive = false;
+				try {
+					executor.join();
+				} catch(InterruptedException e) {
+					e.printStackTrace(); //Dead code
 				}
-				if(context != null)
-				{
-					LibUsb.exit(context);
-				}
+				executor = null;
+			}
+			if(context != null)
+			{
+				LibUsb.exit(context);
+				context = null;
 			}
 		}
 	}

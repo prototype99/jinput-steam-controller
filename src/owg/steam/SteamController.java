@@ -172,16 +172,16 @@ public class SteamController extends AbstractController
 	 * See <code>PROP</code> constants for valid keys.*/
 	public static Properties properties = System.getProperties();
 
-	/**GC prevention*/
+	/**GC prevention: The plugin should kept alive as long as there is a strong reference to {@link SteamController} or {@link SteamControllerPlugin}.*/
 	public final SteamControllerPlugin env;
 
 	protected SteamControllerData data;
 	protected SteamControllerConfig config;
-	public final SteamControllerThread threadTask;
+	public final SteamControllerThreadTask threadTask;
 
 	public SteamController(SteamControllerPlugin env, Device device, short pid, int interfaceNo, int endpointIndex) throws LibUsbException
 	{
-		super("Steam Controller"+(pid == PID_WIRELESS?"(wireless)":"(wired)"), componentArray(), NO_CHILDREN, 
+		super("Steam Controller"+(pid == PID_WIRELESS?" "+interfaceNo+" (wireless)":""), componentArray(), NO_CHILDREN, 
 				SCUtil.getByte(properties, PROP_RUMBLERS, 0x01) == 0 ? NO_RUMBLERS : rumblerArray());
 		this.data = new SteamControllerData();
 		this.config = new SteamControllerConfig(properties, device, pid, LibUsb.getPortNumber(device), (byte)(LibUsb.ENDPOINT_IN|endpointIndex), (short)interfaceNo, interfaceNo);
@@ -194,7 +194,7 @@ public class SteamController extends AbstractController
 			c.host = this;
 		this.env = env;
 
-		threadTask = new SteamControllerThread(this);
+		threadTask = new SteamControllerThreadTask(this);
 	}
 
 	protected static SCRumbler[] rumblerArray()
