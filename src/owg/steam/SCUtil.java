@@ -1,5 +1,6 @@
 package owg.steam;
 
+import java.util.Arrays;
 import java.util.Properties;
 
 /**Uninteresting implementation details*/
@@ -92,5 +93,48 @@ public class SCUtil
 		}
 		radix[0] = 10;
 		return val;
+	}
+	
+	public static String toBinaryString(int value, int digits)
+	{
+		return "0b"+padOrTrim(Integer.toBinaryString(value), digits);
+	}
+
+	public static String toHexString(boolean value)
+	{
+		return value ? "0x01" : "0x00";
+	}
+	
+	public static String toHexString(byte value)
+	{
+		return toHexString(value, 2);
+	}	
+	public static String toHexString(short value)
+	{
+		return toHexString(value, 4);
+	}	
+	public static String toHexString(int value)
+	{
+		return toHexString(value, 8);
+	}
+	
+	public static String toHexString(int value, int digits)
+	{
+		return "0x"+padOrTrim(Integer.toHexString(value), digits);
+	}
+	
+	protected static String padOrTrim(String str, int digits)
+	{
+		int padding = digits-str.length();
+		if(padding > 0)
+		{
+			char[] padChars = new char[padding];
+			Arrays.fill(padChars, '0');
+			str = new String(padChars)+str;
+		}
+		else if(padding < 0)
+			return str.substring(-padding);
+
+		return str;
 	}
 }

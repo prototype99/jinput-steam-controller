@@ -41,6 +41,7 @@ public class SteamControllerThreadTask
 	}
 	
 	public final SteamControllerConfig config;
+	public final SteamControllerDevice device;
 	
 	protected IOException fault = null;
 	protected final Object lock = new Object();
@@ -83,10 +84,11 @@ public class SteamControllerThreadTask
 		components = (SCComponent[]) controller.getComponents();
 		
 		this.config = controller.config;
+		this.device = controller.device;
 		//Note: Failed handle open needs no cleanup
 		handle = new DeviceHandle();
 		{
-			int result = LibUsb.open(config.device, handle);
+			int result = LibUsb.open(device.device, handle);
 			if (result != LibUsb.SUCCESS) {
 				handle = null;
 				throw new LibUsbException("Unable to open USB device", result);
@@ -95,7 +97,7 @@ public class SteamControllerThreadTask
 
 		try {
 			// Check if kernel driver must be detached
-			boolean detach =  LibUsb.kernelDriverActive(handle, config.interfaceNo) == 1;
+			boolean detach =  LibUsb.kernelDriverActive(handle, device.interfaceNo) == 1;
 			//Note: It is recommended to check the value of
 			//LibUsb.hasCapability(LibUsb.CAP_SUPPORTS_DETACH_KERNEL_DRIVER),
 			//but this always returns false (even if the function works)
@@ -103,14 +105,14 @@ public class SteamControllerThreadTask
 			// Detach the kernel driver
 			if (detach)
 			{
-				int result = LibUsb.detachKernelDriver(handle,  config.interfaceNo);
+				int result = LibUsb.detachKernelDriver(handle,  device.interfaceNo);
 				if (result != LibUsb.SUCCESS) 
 					throw new LibUsbException("Unable to detach kernel driver", result);
 			}
 			kernelDriver = detach;
 			
 			{
-				int result = LibUsb.claimInterface(handle, config.interfaceNo);
+				int result = LibUsb.claimInterface(handle, device.interfaceNo);
 				if (result != LibUsb.SUCCESS) 
 					throw new LibUsbException("Unable to claim interface", result);
 			}
@@ -132,7 +134,7 @@ public class SteamControllerThreadTask
 	}
 	public void init() {
 		try {
-			connected = config.isWired();
+			connected = device.isWired();
 			if(connected)
 				doSetup();
 			else
@@ -291,7 +293,7 @@ public class SteamControllerThreadTask
 				}
 			}
 			
-			if(config.gyroMouseX != 0 || config.gyroMouseY != 0)
+			if((config.gyroMouseX != 0 || config.gyroMouseY != 0) && (config.applyConfiguration && (config.gyroMode&SteamController.STEAM_GYRO_MODE_SEND_RAW_GYRO) != 0))
 			{
 				gz += (config.gyroMouseX*grz.pollFrom(lPadData, lStickData, dst)*1000L);
 				gx += (config.gyroMouseY*grx.pollFrom(lPadData, lStickData, dst)*1000L);
@@ -434,7 +436,7 @@ public class SteamControllerThreadTask
 				connected = false;
 			}
 
-			int result = LibUsb.releaseInterface(handle, config.interfaceNo);
+			int result = LibUsb.releaseInterface(handle, device.interfaceNo);
 			if (result != LibUsb.SUCCESS)
 				System.out.println("Info: Unable to release interface: "+result+" (0x"+Integer.toHexString(result)+")");
 
@@ -444,7 +446,7 @@ public class SteamControllerThreadTask
 		// Attach the kernel driver again if needed
 		if (kernelDriver)
 		{
-			int result = LibUsb.attachKernelDriver(handle, config.interfaceNo);
+			int result = LibUsb.attachKernelDriver(handle, device.interfaceNo);
 			if (result != LibUsb.SUCCESS) 
 				System.out.println("Info: Unable to re-attach kernel driver: "+result+" (0x"+Integer.toHexString(result)+")");
 			kernelDriver = false;
@@ -526,7 +528,7 @@ public class SteamControllerThreadTask
 
 	protected boolean doInterruptTransfer(long timeout) throws IOException
 	{
-		int result = LibUsb.interruptTransfer(handle, config.endpoint, data, transferred, timeout);
+		int result = LibUsb.interruptTransfer(handle, device.endpoint, data, transferred, timeout);
 		if(result == LibUsb.ERROR_TIMEOUT)
 			return false;
 		if(result != 0)
@@ -537,7 +539,7 @@ public class SteamControllerThreadTask
 	public void doControlTransfer(long timeout) throws IOException
 	{
 		int result = LibUsb.controlTransfer(handle, (byte) (LibUsb.REQUEST_TYPE_CLASS|LibUsb.RECIPIENT_INTERFACE), 
-				SteamController.HID_REQ_SET_REPORT, (short)0x0300, config.controlIndex, data, timeout);
+				SteamController.HID_REQ_SET_REPORT, (short)0x0300, device.controlIndex, data, timeout);
 		if(result != data.capacity())
 		{
 			throw new IOException("Control transfer failed: "+result+" (0x"+Integer.toHexString(result)+")");

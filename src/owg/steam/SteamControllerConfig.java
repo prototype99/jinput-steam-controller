@@ -1,61 +1,46 @@
 package owg.steam;
 
+import java.text.DecimalFormat;
+import java.text.DecimalFormatSymbols;
+import java.util.Locale;
 import java.util.Properties;
-
-import org.usb4java.Device;
 
 import static owg.steam.SteamController.*;
 
 public class SteamControllerConfig
 {
+	public static DecimalFormat floatFormatter = new DecimalFormat("0.00", DecimalFormatSymbols.getInstance(Locale.ENGLISH));
 	// Notice: This class avoids any references to SteamController or SteamControllerPlugin,
 	// so that the controller thread will not keep the plugin alive if the application stops using it.
 	
-	public final Device device;
-	public final short pid;
-	public final int portNo;
+	public boolean applyConfiguration;
 
-	public final byte endpoint;
-	public final short controlIndex;
-	public final int interfaceNo;
+	public short leftStickMode;
+	public short rightPadMode;
+	public short trackballOrMargin;
+	public short gyroMode;
+
+	public boolean leftPadAutoHaptics;
+	public boolean rightPadAutoHaptics;
+
+	public float leftStickDeadZone;
+	public float leftPadDeadZone;
+	public float rightPadDeadZone;
+
+	public float leftStickEdgeZone;
+	public float leftPadEdgeZone;
+	public float rightPadEdgeZone;
 	
-	public final boolean applyConfiguration;
-
-	public final short leftStickMode;
-	public final short rightPadMode;
-	public final short trackballOrMargin;
-	public final short gyroMode;
-
-	public final boolean leftPadAutoHaptics;
-	public final boolean rightPadAutoHaptics;
-
-	public final float leftStickDeadZone;
-	public final float leftPadDeadZone;
-	public final float rightPadDeadZone;
-
-	public final float leftStickEdgeZone;
-	public final float leftPadEdgeZone;
-	public final float rightPadEdgeZone;
+	public float gyroMouseX;
+	public float gyroMouseY;
+	public int gyroMouseEnableMask;
+	public int gyroMouseDisableMask;
 	
-	public final float gyroMouseX;
-	public final float gyroMouseY;
-	public final int gyroMouseEnableMask;
-	public final int gyroMouseDisableMask;
+	public int buttonMask;
+	public boolean hideDisabledButtons;
 	
-	public final int buttonMask;
-	public final boolean hideDisabledButtons;
-	
-	public SteamControllerConfig(Properties properties, Device device, short pid, int portNo, byte endpoint, short controlIndex, int interfaceNo)
+	public SteamControllerConfig(Properties properties)
 	{
-		this.device = device;
-		this.pid = pid;
-		this.portNo = portNo;
-		
-		this.endpoint = endpoint;
-		this.controlIndex = controlIndex;
-		this.interfaceNo = interfaceNo;
-		
-		
 		this.applyConfiguration = SCUtil.getByte(properties, PROP_APPLY_CONFIGURATION, 0x01) != 0;
 
 		this.leftStickMode = SCUtil.getShort(properties, PROP_LEFT_STICK_MODE, STEAM_INPUT_MODE_JOYSTICK);
@@ -82,14 +67,34 @@ public class SteamControllerConfig
 		this.buttonMask = SCUtil.getInt(properties, PROP_BUTTON_MASK, 0x7FFFFF);
 		this.hideDisabledButtons = SCUtil.getByte(properties, PROP_HIDE_DISABLED_BUTTONS, BYTE_FALSE) != 0;
 	}
-
-
-	public boolean isWired()
+	
+	public void writeTo(Properties properties)
 	{
-		return pid == PID_WIRED;
-	}
-	public boolean isWireless()
-	{
-		return pid == PID_WIRELESS;
+		properties.setProperty(PROP_APPLY_CONFIGURATION, SCUtil.toHexString(applyConfiguration));
+		
+		properties.setProperty(PROP_LEFT_STICK_MODE, SCUtil.toHexString(leftStickMode));
+		properties.setProperty(PROP_RIGHT_PAD_MODE, SCUtil.toHexString(rightPadMode));
+		properties.setProperty(PROP_RIGHT_TRACKBALL_OR_MARGIN, SCUtil.toHexString(trackballOrMargin));
+		properties.setProperty(PROP_GYRO_MODE, SCUtil.toHexString(gyroMode));
+
+		properties.setProperty(PROP_LEFT_PAD_AUTO_HAPTICS, SCUtil.toHexString(leftPadAutoHaptics));
+		properties.setProperty(PROP_RIGHT_PAD_AUTO_HAPTICS, SCUtil.toHexString(rightPadAutoHaptics));
+
+		properties.setProperty(PROP_LEFT_STICK_DEAD_ZONE, floatFormatter.format(leftStickDeadZone));
+		properties.setProperty(PROP_LEFT_PAD_DEAD_ZONE, floatFormatter.format(leftPadDeadZone));
+		properties.setProperty(PROP_RIGHT_PAD_DEAD_ZONE, floatFormatter.format(rightPadDeadZone));
+		
+		properties.setProperty(PROP_LEFT_STICK_EDGE_ZONE, floatFormatter.format(leftStickEdgeZone));
+		properties.setProperty(PROP_LEFT_PAD_EDGE_ZONE, floatFormatter.format(leftPadEdgeZone));
+		properties.setProperty(PROP_RIGHT_PAD_EDGE_ZONE, floatFormatter.format(rightPadEdgeZone));
+
+		properties.setProperty(PROP_GYRO_MOUSE_X, floatFormatter.format(gyroMouseX));
+		properties.setProperty(PROP_GYRO_MOUSE_Y, floatFormatter.format(gyroMouseY));
+
+		properties.setProperty(PROP_GYRO_MOUSE_ENABLE_MASK, SCUtil.toBinaryString(gyroMouseEnableMask, 23));
+		properties.setProperty(PROP_GYRO_MOUSE_DISABLE_MASK, SCUtil.toBinaryString(gyroMouseDisableMask, 23));
+
+		properties.setProperty(PROP_BUTTON_MASK, SCUtil.toBinaryString(buttonMask, 23));
+		properties.setProperty(PROP_HIDE_DISABLED_BUTTONS, SCUtil.toHexString(hideDisabledButtons));
 	}
 }

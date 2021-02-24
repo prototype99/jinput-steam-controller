@@ -11,6 +11,8 @@ import net.java.games.input.AbstractController;
 import net.java.games.input.Component.Identifier;
 import net.java.games.input.Controller;
 import net.java.games.input.Event;
+
+import static owg.steam.SteamControllerButton.*;
 /**{@link Controller} implementation representing a Steam Controller.
  * <br><br>
  * Special thanks to the following people for publishing their work on reverse engineering the Steam Controller USB HID Protocol<ul>
@@ -105,9 +107,9 @@ public class SteamController extends AbstractController
 	 * {@link #BYTE_TRUE}: Disabled buttons will not be visible to the application.*/
 	public static final String PROP_HIDE_DISABLED_BUTTONS = SteamController.class.getName()+".hideDisabledButtons";
 	
-	/**applyConfiguration can be set to 0 or 1 (default 1):
-	 * {@link #BYTE_FALSE}: The leftStickMode, rightPadMode, rightPadTrackball and gyroMode properties are not applied.
-	 * {@link #BYTE_TRUE}: The Steam Controller's configuration will be changed by the software.*/	
+	/**applyConfiguration can be set to 0 or 1 (default 1):<br>
+	 * {@link #BYTE_FALSE}: The leftStickMode, rightPadMode, rightPadTrackball and gyroMode properties are not applied.<br>
+	 * {@link #BYTE_TRUE}: The Steam Controller's configuration will be changed by the software.*/
 	public static final String PROP_APPLY_CONFIGURATION = SteamController.class.getName()+".applyConfiguration";
 	/**leftStickMode can be set to 0 or 1 (default 1):<br>
 	 * {@link #STEAM_INPUT_MODE_MOUSE}: The left stick will move the mouse pointer relative to the center of the screen.<br>
@@ -117,9 +119,9 @@ public class SteamController extends AbstractController
 	 * {@link #STEAM_INPUT_MODE_MOUSE}: The right pad will behave as a touchpad, moving the mouse pointer.<br>
 	 * {@link #STEAM_INPUT_MODE_JOYSTICK}: The right pad will not move the mouse pointer.*/
 	public static final String PROP_RIGHT_PAD_MODE = SteamController.class.getName()+".rightPadMode";
-	/**rightPadTrackball can be set to 0 or 1 (default 1, no effect if rightPadMode is 1):<br>
-	 * {@link #STEAM_TRACKBALL_OFF}: The mouse pointer will not continue to move after flicking the right pad.<br>
-	 * {@link #STEAM_TRACKBALL_ON}: The mouse pointer will have momentum and keep moving after flicking the right pad.*/
+	/**trackballOrMargin can be set to 0 or 1 (default 1, no effect if rightPadMode is 1):<br>
+	 * {@link #BYTE_FALSE}: The mouse pointer will not continue to move after flicking the right pad.<br>
+	 * {@link #BYTE_TRUE}: The mouse pointer will have momentum and keep moving after flicking the right pad.*/
 	public static final String PROP_RIGHT_TRACKBALL_OR_MARGIN = SteamController.class.getName()+".trackballOrMargin";
 	/**gyroMode enables or disables the accelerometer and gyro (default 0x0010):<br>
 	 * {@link #STEAM_GYRO_MODE_OFF}: The gyro and accelerometer are disabled.<br>
@@ -177,6 +179,7 @@ public class SteamController extends AbstractController
 
 	protected SteamControllerData data;
 	protected SteamControllerConfig config;
+	protected SteamControllerDevice device;
 	public final SteamControllerThreadTask threadTask;
 
 	public SteamController(SteamControllerPlugin env, Device device, short pid, int interfaceNo, int endpointIndex) throws LibUsbException
@@ -184,7 +187,8 @@ public class SteamController extends AbstractController
 		super("Steam Controller"+(pid == PID_WIRELESS?" "+interfaceNo+" (wireless)":""), componentArray(), NO_CHILDREN, 
 				SCUtil.getByte(properties, PROP_RUMBLERS, 0x01) == 0 ? NO_RUMBLERS : rumblerArray());
 		this.data = new SteamControllerData();
-		this.config = new SteamControllerConfig(properties, device, pid, LibUsb.getPortNumber(device), (byte)(LibUsb.ENDPOINT_IN|endpointIndex), (short)interfaceNo, interfaceNo);
+		this.config = new SteamControllerConfig(properties);
+		this.device= new SteamControllerDevice(device, pid, LibUsb.getPortNumber(device), (byte)(LibUsb.ENDPOINT_IN|endpointIndex), (short)interfaceNo, interfaceNo);
 		for(SCComponent c : (SCComponent[])getComponents())
 		{
 			c.data = data;
@@ -215,33 +219,36 @@ public class SteamController extends AbstractController
 		boolean gyro = (gyroMode&STEAM_GYRO_MODE_SEND_RAW_GYRO) != 0;
 		SCComponent[] r = new SCComponent[36];
 		int i = 0;
-		i += newButton(r, i, bm, hd, "R2", 			Identifier.Button._0,		0);
-		i += newButton(r, i, bm, hd, "L2", 			Identifier.Button._1,		1);
-		i += newButton(r, i, bm, hd, "R1", 			Identifier.Button._2,		2);
-		i += newButton(r, i, bm, hd, "L1", 			Identifier.Button._3,		3);
+		i += newButton(r, i, bm, hd, R2);
+		i += newButton(r, i, bm, hd, L2);
+		i += newButton(r, i, bm, hd, R1);
+		i += newButton(r, i, bm, hd, L1);
 
-		i += newButton(r, i, bm, hd, "A", 			Identifier.Button.A,		7);
-		i += newButton(r, i, bm, hd, "B", 			Identifier.Button.B,		5);
-		i += newButton(r, i, bm, hd, "X", 			Identifier.Button.X,		6);
-		i += newButton(r, i, bm, hd, "Y", 			Identifier.Button.Y,		4);
+		i += newButton(r, i, bm, hd, A);
+		i += newButton(r, i, bm, hd, B);
+		i += newButton(r, i, bm, hd, X);
+		i += newButton(r, i, bm, hd, Y);
 
-		i += newButton(r, i, bm, hd, "LPad Up", 	Identifier.Button.TOP, 		8);
-		i += newButton(r, i, bm, hd, "LPad Rt", 	Identifier.Button.RIGHT, 	9);
-		i += newButton(r, i, bm, hd, "LPad Lt", 	Identifier.Button.LEFT, 	10);
-		i += newButton(r, i, bm, hd, "LPad Dn", 	Identifier.Button.BASE, 	11);
+		i += newButton(r, i, bm, hd, LP_UP);
+		i += newButton(r, i, bm, hd, LP_RT);
+		i += newButton(r, i, bm, hd, LP_LT);
+		i += newButton(r, i, bm, hd, LP_DN);
 
-		i += newButton(r, i, bm, hd, "Back", 		Identifier.Button.SELECT,	12);
-		i += newButton(r, i, bm, hd, "Steam", 		Identifier.Button.MODE,		13);
-		i += newButton(r, i, bm, hd, "Start", 		Identifier.Button.START,	14);
-		i += newButton(r, i, bm, hd, "LG", 			Identifier.Button._15,		15);
-
-		i += newButton(r, i, bm, hd, "RG",			Identifier.Button._16,		16);
-		i += newLPButton(r, i, bm, hd, "RG",		Identifier.Button._16,		16);
-		i += newButton(r, i, bm, hd, "RPad Press", 	Identifier.Button._18,		18);
-		i += newButton(r, i, bm, hd, "LPad Touch", 	Identifier.Button._19,		19);
-		i += newButton(r, i, bm, hd, "RPad Touch",	Identifier.Button._20,		20);
+		i += newButton(r, i, bm, hd, BACK);
+		i += newButton(r, i, bm, hd, STEAM);
+		i += newButton(r, i, bm, hd, START);
+		
+		i += newButton(r, i, bm, hd, LG);
+		i += newButton(r, i, bm, hd, RG);
+		
+		i += newLPButton(r, i, bm, hd, LP_PRESS);
+		i += newButton(r, i, bm, hd, RP_PRESS);
+		
+		i += newButton(r, i, bm, hd, LP_TOUCH);
+		i += newButton(r, i, bm, hd, RP_TOUCH);
+		
 		//Mystery unused bit at 21
-		i += newButton(r, i, bm, hd, "Stick Btn",	Identifier.Button._22,		22);
+		i += newButton(r, i, bm, hd, STICK_BTN);
 		//LPad/Stick conjunction bit at 23
 
 		r[i  ] = new SCPairedAxis("X Axis", Identifier.Axis.X)
@@ -446,28 +453,26 @@ public class SteamController extends AbstractController
 			return r;
 	}
 
-	private static int newButton(SCComponent[] r, int i, int buttonMask, boolean hideDisabled, 
-			String name, Identifier.Button identifier, int bitIndex) 
+	private static int newButton(SCComponent[] r, int i, int buttonMask, boolean hideDisabled, SteamControllerButton button) 
 	{
-		if((buttonMask&(1<<bitIndex)) != 0)
+		if((buttonMask&(1<<button.bitIndex)) != 0)
 		{
-			r[i] = new SCButton(name, identifier, bitIndex);
+			r[i] = new SCButton(button.title, button.jinputButton, button.bitIndex);
 			return 1;
 		}
 		else if(hideDisabled)
 			return 0;
 		else
 		{
-			r[i] = new DisabledSCButton(name, identifier, bitIndex);
+			r[i] = new DisabledSCButton(button.title, button.jinputButton, button.bitIndex);
 			return 1;
 		}
 	}
-	private static int newLPButton(SCComponent[] r, int i, int buttonMask, boolean hideDisabled, 
-			String name, Identifier.Button identifier, int bitIndex) 
+	private static int newLPButton(SCComponent[] r, int i, int buttonMask, boolean hideDisabled, SteamControllerButton button) 
 	{
-		if((buttonMask&(1<<bitIndex)) != 0)
+		if((buttonMask&(1<<button.bitIndex)) != 0)
 		{
-			r[i] = new SCButton(name, identifier, bitIndex)
+			r[i] = new SCButton(button.title, button.jinputButton, button.bitIndex)
 			{
 				@Override
 				public float pollFrom(byte[] lPadData, byte[] lStickData, byte[] latestData) {
@@ -483,7 +488,7 @@ public class SteamController extends AbstractController
 			return 0;
 		else
 		{
-			r[i] = new DisabledSCButton(name, identifier, bitIndex);
+			r[i] = new DisabledSCButton(button.title, button.jinputButton, button.bitIndex);
 			return 1;
 		}
 	}
@@ -491,7 +496,7 @@ public class SteamController extends AbstractController
 	@Override
 	public String toString()
 	{
-		return getName()+" "+config.portNo+"-"+config.interfaceNo;
+		return getName()+" "+device.portNo+"-"+device.interfaceNo;
 	}
 
 	@Override
@@ -542,7 +547,7 @@ public class SteamController extends AbstractController
 	@Override
 	public int getPortNumber()
 	{
-		return config.portNo;
+		return device.portNo;
 	}
 
 	@Override
