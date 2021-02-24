@@ -5,11 +5,13 @@ import java.awt.MouseInfo;
 import java.awt.Point;
 import java.awt.PointerInfo;
 import java.awt.Robot;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Arrays;
-import javax.swing.SwingUtilities;
+import javax.swing.Timer;
 
 import org.usb4java.DeviceHandle;
 import org.usb4java.LibUsb;
@@ -73,6 +75,9 @@ public class SteamControllerThreadTask
 	protected long padTime = Long.MIN_VALUE;
 	protected final int[] hapticOutcodes = {-1, -1};
 
+	protected final Point mouseOffset = new Point();	
+	protected final Timer mouseUpdater;
+
 	protected int[] hapticIntensity = {0x0000, 0x0000};
 	protected int[] hapticPeriod = {0x0000, 0x0000};
 	protected int[] hapticCount = {0x0000, 0x0000};
@@ -131,6 +136,25 @@ public class SteamControllerThreadTask
 		rpy = ((SCComponent)controller.getComponent(Identifier.Axis.RY_FORCE));
 		grz = ((SCComponent)controller.getComponent(Identifier.Axis.RZ));
 		grx = ((SCComponent)controller.getComponent(Identifier.Axis.RX));
+		
+		mouseUpdater = new Timer(16, new ActionListener()
+		{
+			@Override
+			public void actionPerformed(ActionEvent e)
+			{
+				PointerInfo ptr = MouseInfo.getPointerInfo();
+				if(ptr != null)
+				{
+					Point mouse = ptr.getLocation();
+					synchronized (mouseOffset)
+					{
+						robot.mouseMove(mouse.x+mouseOffset.x, mouse.y-mouseOffset.y);
+						mouseOffset.x = 0;
+						mouseOffset.y = 0;
+					}
+				}
+			}
+		});
 	}
 	public void init() {
 		try {
@@ -299,25 +323,14 @@ public class SteamControllerThreadTask
 				gx += (config.gyroMouseY*grx.pollFrom(lPadData, lStickData, dst)*1000L);
 				int buttons = (dst[8]&0xFF) | ((dst[9]&0xFF)<<8) | ((dst[10]&0xFF)<<16) | ((dst[11]&0xFF)<<24);
 				if((config.gyroMouseEnableMask == 0 || (buttons&config.gyroMouseEnableMask) != 0) &&
-						(buttons&config.gyroMouseDisableMask) == 0)
+						(buttons&config.gyroMouseDisableMask) == 0 && robot != null)
 				{
-					final int mouseDX = (int)gz;
-					final int mouseDY = (int)gx;
-					if(robot != null)
+					synchronized (mouseOffset)
 					{
-						SwingUtilities.invokeLater(new Runnable()
-						{
-							@Override
-							public void run()
-							{
-								PointerInfo ptr = MouseInfo.getPointerInfo();
-								if(ptr != null)
-								{
-									Point mouse = ptr.getLocation();
-									robot.mouseMove(mouse.x+mouseDX, mouse.y-mouseDY);
-								}
-							}
-						});
+						if(!mouseUpdater.isRunning())
+							mouseUpdater.start();
+						mouseOffset.x += (int)gz;
+						mouseOffset.y += (int)gx;
 					}
 				}
 				gz = gz%1.0f;
@@ -457,6 +470,10 @@ public class SteamControllerThreadTask
 			LibUsb.close(handle);
 			handle = null;
 		}
+		
+		if(mouseUpdater != null)
+			mouseUpdater.stop();
+		
 		System.out.println("Info: "+this+" cleaned up");
 	}
 
