@@ -174,9 +174,9 @@ public class SteamControllerThreadTask
 		}
 	}
 
-	public void run() {
+	public boolean run() {
 		if(fault != null)
-			return;
+			return false;
 		
 		try {
 			if(doInterruptTransfer(1L))
@@ -236,6 +236,7 @@ public class SteamControllerThreadTask
 					fault = new IOException(err);
 			}
 		}
+		return connected;
 	}
 
 	private void doRequestCommStatus() {

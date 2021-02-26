@@ -22,8 +22,17 @@ public class SteamControllerThread extends Thread
 				ct.init();
 			while(alive)
 			{
+				boolean active = false;
 				for(SteamControllerThreadTask ct : controllerTasks)
-					ct.run();
+					active |= ct.run();
+				if(!active)
+				{
+					try {
+						Thread.sleep(50);
+					} catch(InterruptedException e) {
+						//Don't care
+					}
+				}
 			}
 		} finally {
 			for(SteamControllerThreadTask ct : controllerTasks)
