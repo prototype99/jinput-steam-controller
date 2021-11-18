@@ -179,7 +179,7 @@ public class SteamControllerThreadTask
 			return false;
 		
 		try {
-			if(doInterruptTransfer(1L))
+			if(doInterruptTransfer(4L))
 			{
 				int bytes = transferred.get(0);
 				if(bytes == 64)
